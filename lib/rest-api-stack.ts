@@ -99,6 +99,23 @@ export class RestAPIStack extends cdk.Stack {
       }
     );
 
+    const getAwardByBodyAndMovieIdFn = new lambdanode.NodejsFunction(
+      this,
+      "GetAwardByBodyAndMovieIdFn",
+      {
+        architecture: lambda.Architecture.ARM_64,
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: `${__dirname}/../question1/answer.ts`,
+        handler: "handler", 
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 128,
+        environment: {
+          AWARDS_TABLE_NAME: movieAwardsTable.tableName,
+          REGION: "eu-west-1",
+        },
+      }
+    );
+
     new custom.AwsCustomResource(this, "moviesddbInitData", {
       onCreate: {
         service: "DynamoDB",
@@ -139,7 +156,6 @@ export class RestAPIStack extends cdk.Stack {
     });
 
     const moviesEndpoint = api.root.addResource("movies");
-
     const movieEndpoint = moviesEndpoint.addResource("{movieId}");
 
     movieEndpoint.addMethod(
@@ -158,10 +174,22 @@ export class RestAPIStack extends cdk.Stack {
       new apig.LambdaIntegration(deleteMovieByIdFn, { proxy: true })
     );
 
-    // Permissions;
+    const awardsEndpoint = api.root.addResource("awards");
+    const awardBodyEndpoint = awardsEndpoint.addResource("{awardBody}");
+    const awardMovieEndpoint = awardBodyEndpoint
+      .addResource("movies")
+      .addResource("{movieId}");
+
+    awardMovieEndpoint.addMethod(
+      "GET",
+      new apig.LambdaIntegration(getAwardByBodyAndMovieIdFn, { proxy: true })
+    );
+
+    // Permissions
     moviesTable.grantReadData(getMovieByIdFn);
     moviesTable.grantReadWriteData(deleteMovieByIdFn);
     movieCastsTable.grantReadData(getMovieCastMembersFn);
     movieCastsTable.grantReadData(getMovieByIdFn);
+    movieAwardsTable.grantReadData(getAwardByBodyAndMovieIdFn);
   }
 }
