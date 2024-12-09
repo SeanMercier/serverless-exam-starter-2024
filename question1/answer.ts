@@ -10,8 +10,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
 
     const awardBody = event?.pathParameters?.awardBody;
     const movieId = event?.pathParameters?.movieId ? parseInt(event.pathParameters.movieId) : undefined;
+    const minAwards = event?.queryStringParameters?.min ? parseInt(event.queryStringParameters.min) : undefined;
 
     if (!awardBody || !movieId) {
+      console.error("Missing Parameters: awardBody or movieId");
       return {
         statusCode: 400,
         headers: { "content-type": "application/json" },
@@ -28,9 +30,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
       },
     };
 
+    console.log("DynamoDB Query Input: ", JSON.stringify(commandInput));
+
     const commandOutput = await ddbDocClient.send(new QueryCommand(commandInput));
 
     if (!commandOutput.Items || commandOutput.Items.length === 0) {
+      console.error("No awards found for the specified movie and award body.");
       return {
         statusCode: 404,
         headers: { "content-type": "application/json" },
@@ -38,17 +43,30 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
       };
     }
 
+    const awardDetails = commandOutput.Items[0];
+    const numAwards = awardDetails.numAwards;
+
+    // Checks number of awards meets the minimum threshold
+    if (minAwards !== undefined && numAwards <= minAwards) {
+      console.log(`Number of awards (${numAwards}) does not exceed minimum (${minAwards}).`);
+      return {
+        statusCode: 200,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "Request failed" }),
+      };
+    }
+
     return {
       statusCode: 200,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ data: commandOutput.Items }),
+      body: JSON.stringify({ data: awardDetails }),
     };
   } catch (error: any) {
-    console.error(error);
+    console.error("Error: ", error);
     return {
       statusCode: 500,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ error }),
+      body: JSON.stringify({ error: error.message || "Internal Server Error" }),
     };
   }
 };
